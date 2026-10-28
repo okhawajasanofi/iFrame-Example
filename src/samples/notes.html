@@ -1,0 +1,66 @@
+<!-- Team Notes: an INJECTED child frame (pattern A). Written to the rules in GEOTAB_ADDIN_GUIDE.md:
+     exactly one inline <script>, no static <style>, CSS isolated in a Shadow DOM, no document.head access.
+     The same file also works standalone (P8): outside the mainframe it shows its own sign-in. -->
+<div id="notes-root"></div>
+<script src="/sdk.js"></script>
+<script>
+(function () {
+  var CSS = ':host{display:block;font-family:system-ui,"Segoe UI",sans-serif;color:#1b2430;--brand:#0b7a53}' +
+    '.card{background:#fff;border:2px solid var(--brand);border-radius:10px;padding:14px;max-width:560px}' +
+    'h2{margin:0 0 4px;font-size:18px;color:var(--brand)} .sub{color:#5b6676;margin:0 0 10px;font-size:13px}' +
+    'ul{list-style:none;padding:0;margin:10px 0}' +
+    'li{background:#eef7f2;border-radius:6px;padding:6px 8px;margin:4px 0}' +
+    'li small{color:#5b6676;display:block}' +
+    'textarea{width:100%;box-sizing:border-box;padding:6px;border:1px solid #9bb;border-radius:6px;font:inherit}' +
+    'button{background:var(--brand);color:#fff;border:0;border-radius:20px;padding:6px 16px;cursor:pointer;margin-top:6px}' +
+    '.err{color:#b3261e;margin-top:6px;min-height:1.2em} .role{background:#d7efe3;border-radius:5px;padding:0 6px;font-size:12px}';
+  var HTML = '<div class="card"><h2 id="hello">Loading…</h2>' +
+    '<p class="sub">Team Notes (injected) · role <span class="role" id="role"></span></p>' +
+    '<ul id="list"></ul><textarea id="text" rows="2" maxlength="500" placeholder="Write a note"></textarea>' +
+    '<button id="add">Add note</button><div class="err" id="err" role="alert"></div></div>';
+
+  var shadow, api = null;
+  try {
+    shadow = document.getElementById('notes-root').attachShadow({ mode: 'open' });
+    shadow.innerHTML = '<style>' + CSS + '</style>' + HTML;
+  } catch (e) { shadow = document.getElementById('notes-root'); shadow.innerHTML = HTML; }
+  function $(sel) { return shadow.querySelector(sel); }
+
+  function render(notes) {
+    var ul = $('#list'); ul.textContent = '';
+    notes.forEach(function (n) {
+      var li = document.createElement('li');
+      li.textContent = n.text;
+      var s = document.createElement('small'); s.textContent = n.author + ' · ' + new Date(n.createdAt).toLocaleString();
+      li.appendChild(s); ul.appendChild(li);
+    });
+  }
+  function load() { return api.call('notes.list', {}).then(render, function (e) { $('#err').textContent = 'Refused: ' + e.code; }); }
+
+  function start(a) {
+    api = a;
+    a.getSession().then(function (s) {
+      $('#hello').textContent = 'Hello ' + s.user + ' @ ' + s.tenant;
+      $('#role').textContent = s.role;
+    });
+    $('#add').onclick = function () {
+      $('#err').textContent = '';
+      var text = $('#text').value;
+      api.call('notes.add', { text: text }).then(function () { $('#text').value = ''; return load(); },
+        function (e) { $('#err').textContent = 'Refused: ' + e.code; });
+    };
+    load();
+  }
+
+  window.platform = window.platform || { apps: {} };
+  var hosted = window.platform.hosted === true;
+  window.platform.apps['notes'] = function () {
+    return {
+      initialize: function (host, state, done) { start(PlatformSDK.fromHost(host)); done(); },
+      focus: function () { if (api) load(); },
+      blur: function () {}
+    };
+  };
+  if (!hosted) PlatformSDK.standalone('notes').then(start); // P8: standalone fallback
+})();
+</script>

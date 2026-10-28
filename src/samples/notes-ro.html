@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Notes (read-only)</title>
+<style>
+  body { font: 14px system-ui, "Segoe UI", sans-serif; margin: 16px; color: #1b2430; background: #fff; }
+  h1 { font-size: 18px; margin: 0 0 4px; } .sub { color: #5b6676; margin: 0 0 12px; }
+  ul { padding-left: 18px; max-width: 640px; } li { margin: 4px 0; }
+  button { padding: 6px 14px; border-radius: 6px; border: 1px solid #99a; background: #f3f5fa; cursor: pointer; }
+  #result { margin-top: 10px; font-weight: 600; min-height: 1.4em; } .refused { color: #b3261e; } .ok { color: #1f7a3d; }
+</style>
+</head>
+<body>
+<h1 id="hello">Loading…</h1>
+<p class="sub">Notes (read-only, sandboxed) · approved for notes.read only</p>
+<ul id="list"></ul>
+<button id="add">Add note</button>
+<div id="result" role="status"></div>
+<script src="/sdk.js"></script>
+<script>
+PlatformSDK.connect('notes-ro').then(function (api) {
+  api.getSession().then(function (s) { document.getElementById('hello').textContent = 'Hello ' + s.user + ' @ ' + s.tenant; });
+  api.call('notes.list', {}).then(function (notes) {
+    var ul = document.getElementById('list');
+    notes.forEach(function (n) { var li = document.createElement('li'); li.textContent = n.text; ul.appendChild(li); });
+  });
+  document.getElementById('add').onclick = function () {
+    var out = document.getElementById('result');
+    api.call('notes.add', { text: 'Trying to write from a read-only frame' }).then(
+      function () { out.className = 'ok'; out.textContent = 'Added (unexpected!)'; },
+      function (e) { out.className = 'refused'; out.textContent = 'Refused: ' + (e.code || e.message); });
+  };
+});
+</script>
+</body>
+</html>

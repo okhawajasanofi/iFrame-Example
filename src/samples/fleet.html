@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Fleet Viewer</title>
+<style>
+  body { font: 14px system-ui, "Segoe UI", sans-serif; margin: 16px; color: #1b2430; background: #fff; }
+  h1 { font-size: 18px; margin: 0 0 4px; } .sub { color: #5b6676; margin: 0 0 12px; }
+  table { border-collapse: collapse; width: 100%; max-width: 760px; }
+  th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid #dde3ec; }
+  th { background: #eef2f9; } .err { color: #b3261e; }
+</style>
+</head>
+<body>
+<h1 id="hello">Loading…</h1>
+<p class="sub">Fleet Viewer (sandboxed) · needs vehicles.read</p>
+<div class="err" id="err" role="alert"></div>
+<table id="t"><thead><tr><th>Vehicle</th><th>Plate</th><th>Status</th><th>Odometer (km)</th></tr></thead><tbody></tbody></table>
+<script src="/sdk.js"></script>
+<script>
+PlatformSDK.connect('fleet').then(function (api) {
+  api.getSession().then(function (s) { document.getElementById('hello').textContent = 'Hello ' + s.user + ' @ ' + s.tenant; });
+  return api.call('vehicles.list', {}).then(function (rows) {
+    var body = document.querySelector('#t tbody');
+    rows.forEach(function (v) {
+      var tr = document.createElement('tr');
+      [v.name, v.plate, v.status, v.odometerKm.toLocaleString()].forEach(function (x) {
+        var td = document.createElement('td'); td.textContent = x; tr.appendChild(td);
+      });
+      body.appendChild(tr);
+    });
+  });
+}).catch(function (e) { document.getElementById('err').textContent = 'Refused: ' + (e.code || e.message); });
+</script>
+</body>
+</html>

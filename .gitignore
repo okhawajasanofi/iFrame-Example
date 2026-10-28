@@ -1,0 +1,21 @@
+node_modules/
+dist/
+
+# The demo database IS committed (data/mainframe.db), so a fresh clone starts with the same users, apps and groups.
+# Everything else in data/ (test databases, SQLite write-ahead files) is not.
+data/*
+!data/mainframe.db
+*.db-wal
+*.db-shm
+*.db-journal
+
+# Uploaded child-frame HTML is committed with the database that references it. The e2e run uses its own folder.
+uploads-*/
+
+# Secrets and local files. JWT_SECRET is generated into .env on first run, so every clone gets its own.
+.env
+.env.*
+
+# Test output
+test-results/
+playwright-report/

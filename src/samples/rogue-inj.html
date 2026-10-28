@@ -1,0 +1,90 @@
+<!-- Rogue (injected): UNSAFE BY DESIGN. A hostile child frame running inside the mainframe page (pattern A).
+     It shows, honestly, what pattern A cannot stop and what it does stop. -->
+<div id="rogue-inj-root"></div>
+<script src="/sdk.js"></script>
+<script>
+(function () {
+  var CSS = ':host{display:block;font-family:system-ui,"Segoe UI",sans-serif;color:#1b2430}' +
+    '.card{border:3px dashed #b3261e;border-radius:10px;padding:14px;background:#fff7f6;max-width:900px}' +
+    'h2{margin:0 0 4px;color:#b3261e}.tag{background:#b3261e;color:#fff;border-radius:5px;padding:2px 8px;font-size:12px;font-weight:700}' +
+    'p{margin:6px 0}button{background:#b3261e;color:#fff;border:0;border-radius:6px;padding:8px 16px;cursor:pointer}' +
+    'table{border-collapse:collapse;width:100%;margin-top:12px;font-size:13px}th,td{text-align:left;padding:5px 8px;border-bottom:1px solid #e8c9c6;vertical-align:top}' +
+    '.SUCCEEDED{color:#b3261e;font-weight:700}.STOPPED{color:#1f7a3d;font-weight:700}.NOT_TESTED{color:#6b4a00;font-weight:700}';
+  var HTML = '<div class="card"><h2>Rogue (injected) <span class="tag">UNSAFE BY DESIGN</span></h2>' +
+    '<p>Hostile code that runs INSIDE the mainframe page. Pattern A cannot stop everything: this table shows what it can and cannot stop. That is why pattern A is for code you wrote or reviewed only.</p>' +
+    '<button id="run">Run attacks</button><table id="out" hidden><thead><tr><th>Attack</th><th>Pattern A should…</th><th>Result</th><th>Detail</th></tr></thead><tbody></tbody></table></div>';
+  var shadow = document.getElementById('rogue-inj-root').attachShadow({ mode: 'open' });
+  shadow.innerHTML = '<style>' + CSS + '</style>' + HTML;
+  function $(s) { return shadow.querySelector(s); }
+  var api = null, running = false;
+
+  async function attacks() {
+    var rows = [];
+    function add(name, expected, actual, detail) { rows.push({ name: name, expected: expected, actual: actual, detail: detail }); }
+    var me = await api.getSession();
+
+    // ---- things pattern A CANNOT stop ----
+    var u = document.getElementById('user-name'), t = document.getElementById('tenant-name'), l = document.getElementById('launcher');
+    add('Read the mainframe DOM (user, tenant, launcher)', 'succeed', u && t && l ? 'SUCCEEDED' : 'STOPPED',
+      u && t && l ? 'user "' + u.textContent + '", tenant "' + t.textContent + '", ' + l.querySelectorAll('.launch').length + ' launcher entries' : 'not found');
+
+    var others = Array.prototype.filter.call(document.querySelectorAll('[data-pane-id]'), function (p) { return p.getAttribute('data-pane-id') !== 'rogue-inj'; });
+    if (others.length) {
+      var p = others[0], inner = p.querySelector('[id$="-root"]'), txt = ((inner && inner.shadowRoot ? Array.prototype.filter.call(inner.shadowRoot.children, function (c) { return c.tagName !== 'STYLE'; }).map(function (c) { return c.textContent; }).join(' ') : p.textContent) || '').replace(/\s+/g, ' ').trim();
+      add("Read another open child frame's DOM", 'succeed', 'SUCCEEDED', 'read "' + p.getAttribute('data-pane-id') + '": ' + txt.slice(0, 80));
+    } else add("Read another open child frame's DOM", 'succeed', 'NOT_TESTED', 'open another child frame first');
+
+    var box = document.createElement('div');
+    box.setAttribute('style', 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:2147483000;display:grid;place-items:center');
+    box.innerHTML = '<div style="background:#fff;padding:24px;border-radius:8px;font:16px system-ui">Your session expired. Sign in again.<br><input placeholder="email"> <input type="password" placeholder="password"></div>';
+    document.body.appendChild(box);
+    setTimeout(function () { box.remove(); }, 2500);
+    add('Draw a fake "session expired, sign in" box over the page', 'succeed', 'SUCCEEDED', 'drawn over the whole mainframe for 2.5 seconds, then removed');
+
+    try { var v = await api.call('vehicles.list', {}); add('Call vehicles.list (within its scope)', 'succeed', 'SUCCEEDED', v.length + ' vehicles returned'); }
+    catch (e) { add('Call vehicles.list (within its scope)', 'succeed', 'STOPPED', e.code); }
+
+    // ---- things pattern A DOES stop ----
+    var seen = typeof session;
+    add('Read the token by name (typeof session)', 'stop', seen === 'undefined' ? 'STOPPED' : 'SUCCEEDED', 'typeof session is "' + seen + '"');
+
+    var real = window.fetch, captured = null;
+    window.fetch = function (url, opts) { try { var h = opts && opts.headers; if (h) captured = captured || h.Authorization || (h.get && h.get('authorization')); } catch (e) {} return real.apply(this, arguments); };
+    try { await api.call('whoami', {}); } finally { window.fetch = real; }
+    add('Capture the Authorization header by replacing window.fetch', 'stop', captured ? 'SUCCEEDED' : 'STOPPED', captured ? 'captured a header!' : 'no header seen: the mainframe uses the fetch it captured at boot');
+
+    try { await api.call('notes.add', { text: 'rogue' }); add('Call notes.add (outside its scope)', 'stop', 'SUCCEEDED', 'ALLOWED'); }
+    catch (e) { add('Call notes.add (outside its scope)', 'stop', e.code === 'scope_denied' ? 'STOPPED' : 'SUCCEEDED', 'refused by the SERVER: ' + e.code); }
+
+    try {
+      var other = me.tenantId === 'globex' ? 'acme' : 'globex';
+      var mine = await api.call('vehicles.list', {}), asked = await api.call('vehicles.list', { tenant: other });
+      add("Read another tenant's data", 'stop', JSON.stringify(mine) === JSON.stringify(asked) ? 'STOPPED' : 'SUCCEEDED', 'tenant field ignored by the server: still ' + me.tenant + ' data');
+    } catch (e) { add("Read another tenant's data", 'stop', 'STOPPED', e.code); }
+    return rows;
+  }
+
+  function show(rows) {
+    var tb = $('#out tbody'); tb.textContent = '';
+    rows.forEach(function (r) {
+      var tr = document.createElement('tr'); tr.setAttribute('data-expected', r.expected); tr.setAttribute('data-actual', r.actual);
+      [r.name, r.expected === 'succeed' ? 'fail to stop it' : 'stop it', r.actual.replace('_', ' '), r.detail].forEach(function (x, i) {
+        var td = document.createElement('td'); td.textContent = x; if (i === 2) td.className = r.actual; tr.appendChild(td);
+      });
+      tb.appendChild(tr);
+    });
+    $('#out').hidden = false;
+  }
+
+  function start(a) {
+    api = a;
+    $('#run').onclick = function () { if (running) return; running = true; attacks().then(show).finally(function () { running = false; }); };
+  }
+
+  window.platform = window.platform || { apps: {} };
+  window.platform.apps['rogue-inj'] = function () {
+    return { initialize: function (host, state, done) { start(PlatformSDK.fromHost(host)); done(); }, focus: function () {}, blur: function () {} };
+  };
+  if (!window.platform.hosted) $('#run').onclick = function () { $('#out').hidden = true; alert('This frame only makes sense inside the mainframe.'); };
+})();
+</script>
